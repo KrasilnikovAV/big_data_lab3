@@ -1,0 +1,10 @@
+.git
+.github
+.dvc/cache
+.venv
+__pycache__
+.pytest_cache
+notebooks
+tests
+artifacts
+*.ipynb
