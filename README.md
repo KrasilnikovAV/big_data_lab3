@@ -41,11 +41,6 @@ python scripts/train_model.py --config config.ini
 - `metrics.json`
 - `submission.csv`
 
-### Переменные окружения ClickHouse
-
-Создай локальный `.env` на основе `.env.example` и задай параметры подключения к ClickHouse.
-Логин, пароль, host и port не захардкожены в коде приложения и читаются только из env-переменных.
-
 ### Запуск API
 
 ```bash
