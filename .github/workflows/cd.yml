@@ -33,7 +33,11 @@ jobs:
           chmod 600 secrets/.vault_pass.txt
 
       - name: Start container
-        run: docker compose up -d --build
+        run: |
+          docker compose up -d --build || {
+            docker compose logs vault-bootstrap clickhouse bbc-news-api
+            exit 1
+          }
 
       - name: Wait for service
         run: |

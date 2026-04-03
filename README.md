@@ -119,7 +119,7 @@ docker compose down
 ```
 
 В `docker-compose` поднимаются три сервиса:
-- `vault-bootstrap` - одноразовый контейнер, который расшифровывает Ansible Vault в runtime env-файл для ClickHouse.
+- `vault-bootstrap` - одноразовый контейнер, который расшифровывает Ansible Vault и генерирует `clickhouse-user.xml` для ClickHouse.
 - `clickhouse` - база данных для хранения результатов модели и наборов train/test.
 - `bbc-news-api` - API сервиса модели, читающий ClickHouse-секреты напрямую из Vault по фиксированным путям.
 
@@ -127,7 +127,7 @@ docker compose down
 
 - CI запускается на `pull_request` в `main`.
 - CI выполняет: обучение, тесты, сборку образа и push в DockerHub (если заданы secrets), подпись образа `cosign`, генерацию `dev_sec_ops.yml`.
-- CD запускается вручную/по расписанию/после CI, создаёт временный `secrets/.vault_pass.txt` из GitHub Secret `ANSIBLE_VAULT_PASSWORD`, поднимает `docker compose`, загружает train/test данные в БД и выполняет функциональный сценарий из `scenario.json`.
+- CD запускается вручную/по расписанию/после CI, создаёт временный `secrets/.vault_pass.txt` из GitHub Secret `ANSIBLE_VAULT_PASSWORD`, монтирует каталог `secrets` в контейнеры как `/run/secrets`, поднимает `docker compose`, загружает train/test данные в БД и выполняет функциональный сценарий из `scenario.json`.
 
 ## Ссылки
 

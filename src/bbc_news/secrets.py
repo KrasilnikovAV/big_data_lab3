@@ -13,6 +13,7 @@ DEFAULT_VAULT_FILE_CANDIDATES = (
     Path("secrets/clickhouse.vault.yml"),
 )
 DEFAULT_VAULT_PASSWORD_FILE_CANDIDATES = (
+    Path("/run/secrets/.vault_pass.txt"),
     Path("/run/secrets/ansible_vault_password"),
     Path("secrets/.vault_pass.txt"),
 )

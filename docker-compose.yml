@@ -8,10 +8,26 @@ services:
       - /bin/sh
       - -lc
       - |
+        set -eu
+        test -s /run/secrets/.vault_pass.txt || {
+          echo "Vault password file is missing or empty: /run/secrets/.vault_pass.txt" >&2
+          exit 1
+        }
         secrets="$$(ansible-vault view /app/secrets/clickhouse.vault.yml \
-          --vault-password-file /run/secrets/ansible_vault_password)"
+          --vault-password-file /run/secrets/.vault_pass.txt)" || {
+          echo "Failed to decrypt /app/secrets/clickhouse.vault.yml. Check ANSIBLE_VAULT_PASSWORD." >&2
+          exit 1
+        }
         user="$$(printf '%s\n' "$$secrets" | awk -F': ' '/^CLICKHOUSE_USER: / {print $$2}')"
         password="$$(printf '%s\n' "$$secrets" | awk -F': ' '/^CLICKHOUSE_PASSWORD: / {print $$2}')"
+        test -n "$$user" || {
+          echo "CLICKHOUSE_USER was not found in Vault payload." >&2
+          exit 1
+        }
+        test -n "$$password" || {
+          echo "CLICKHOUSE_PASSWORD was not found in Vault payload." >&2
+          exit 1
+        }
         case "$$user" in
           ''|*[!A-Za-z0-9_]*)
             echo "Unsupported CLICKHOUSE_USER value" >&2
@@ -44,7 +60,7 @@ services:
         test -s /vault/clickhouse-user.xml
     volumes:
       - vault_runtime:/vault
-      - ./secrets/.vault_pass.txt:/run/secrets/ansible_vault_password:ro
+      - ./secrets:/run/secrets:ro
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
@@ -79,7 +95,7 @@ services:
       timeout: 10s
       retries: 5
     volumes:
-      - ./secrets/.vault_pass.txt:/run/secrets/ansible_vault_password:ro
+      - ./secrets:/run/secrets:ro
 
 volumes:
   clickhouse_data:
