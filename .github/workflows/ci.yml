@@ -5,10 +5,6 @@ on:
     branches:
       - main
 
-env:
-  PYTHON_VERSION: "3.11"
-  IMAGE_NAME: bbc-news-classifier_v2
-
 jobs:
   build-test-push:
     runs-on: ubuntu-latest
@@ -24,7 +20,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -43,10 +39,10 @@ jobs:
         run: |
           if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ] || [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
             echo "DOCKER_PUSH=false" >> "$GITHUB_ENV"
-            echo "IMAGE_REF=local/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> "$GITHUB_ENV"
+            echo "IMAGE_REF=local/bbc-news-classifier_v3:${{ github.sha }}" >> "$GITHUB_ENV"
           else
             echo "DOCKER_PUSH=true" >> "$GITHUB_ENV"
-            echo "IMAGE_REF=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> "$GITHUB_ENV"
+            echo "IMAGE_REF=${{ secrets.DOCKERHUB_USERNAME }}/bbc-news-classifier_v3:${{ github.sha }}" >> "$GITHUB_ENV"
           fi
 
       - name: Set up Docker Buildx
@@ -72,7 +68,7 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE_REF }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/bbc-news-classifier_v3:latest
 
       - name: Install cosign
         if: env.DOCKER_PUSH == 'true'

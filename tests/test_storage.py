@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
+import yaml
+from ansible.parsing.vault import VaultLib, VaultSecret
 
 from bbc_news.storage import (
     ClickHousePredictionStore,
     ClickHouseSettings,
     PredictionClassStat,
     PredictionLogRecord,
-    load_clickhouse_settings_from_env,
+    DEFAULT_CLICKHOUSE_DATABASE,
+    DEFAULT_CLICKHOUSE_HOST,
+    DEFAULT_CLICKHOUSE_PORT,
+    load_clickhouse_settings,
 )
 
 
@@ -36,16 +42,42 @@ class FakeClient:
         return self.next_result
 
 
-def test_load_clickhouse_settings_from_env_requires_all_fields(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLICKHOUSE_ENABLED", "true")
-    monkeypatch.setenv("CLICKHOUSE_HOST", "clickhouse")
-    monkeypatch.setenv("CLICKHOUSE_PORT", "8123")
-    monkeypatch.setenv("CLICKHOUSE_USER", "app_user")
-    monkeypatch.delenv("CLICKHOUSE_PASSWORD", raising=False)
-    monkeypatch.setenv("CLICKHOUSE_DATABASE", "bbc_news")
+def _write_vault(path: Path, payload: dict[str, str], password: str) -> None:
+    vault = VaultLib([("default", VaultSecret(password.encode("utf-8")))])
+    encrypted = vault.encrypt(yaml.safe_dump(payload, sort_keys=True).encode("utf-8"))
+    path.write_bytes(encrypted)
+
+
+def test_load_clickhouse_settings_requires_all_fields_from_vault(tmp_path: Path) -> None:
+    vault_file = tmp_path / "clickhouse.vault.yml"
+    password_file = tmp_path / ".vault_pass.txt"
+    password_file.write_text("test-pass\n", encoding="utf-8")
+    _write_vault(vault_file, {"CLICKHOUSE_USER": "app_user"}, password="test-pass")
 
     with pytest.raises(ValueError, match="CLICKHOUSE_PASSWORD"):
-        load_clickhouse_settings_from_env()
+        load_clickhouse_settings(vault_file=vault_file, password_file=password_file)
+
+
+def test_load_clickhouse_settings_reads_credentials_from_vault(tmp_path: Path) -> None:
+    vault_file = tmp_path / "clickhouse.vault.yml"
+    password_file = tmp_path / ".vault_pass.txt"
+    password_file.write_text("test-pass\n", encoding="utf-8")
+    _write_vault(
+        vault_file,
+        {
+            "CLICKHOUSE_USER": "vault_user",
+            "CLICKHOUSE_PASSWORD": "vault_password",
+        },
+        password="test-pass",
+    )
+
+    settings = load_clickhouse_settings(vault_file=vault_file, password_file=password_file)
+
+    assert settings.host == DEFAULT_CLICKHOUSE_HOST
+    assert settings.port == DEFAULT_CLICKHOUSE_PORT
+    assert settings.database == DEFAULT_CLICKHOUSE_DATABASE
+    assert settings.username == "vault_user"
+    assert settings.password == "vault_password"
 
 
 def test_clickhouse_store_creates_schema_and_inserts_predictions() -> None:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -13,7 +12,7 @@ from .storage import (
     PredictionClassStat,
     PredictionLogRecord,
     PredictionStore,
-    build_prediction_store_from_env,
+    build_prediction_store,
 )
 
 MODEL: PredictionModel | None = None
@@ -23,12 +22,11 @@ PREDICTION_STORE: PredictionStore = NullPredictionStore()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global MODEL, PREDICTION_STORE
-    model_path = os.getenv("MODEL_PATH", "artifacts/model.joblib")
     try:
-        MODEL = load_model(model_path)
+        MODEL = load_model("artifacts/model.joblib")
     except FileNotFoundError:
         MODEL = None
-    PREDICTION_STORE = build_prediction_store_from_env()
+    PREDICTION_STORE = build_prediction_store()
     PREDICTION_STORE.ensure_ready()
     yield
 

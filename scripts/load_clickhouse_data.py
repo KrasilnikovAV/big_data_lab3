@@ -5,7 +5,7 @@ from pathlib import Path
 
 from bbc_news.config import load_config
 from bbc_news.data import load_inference_frame, load_training_frame
-from bbc_news.storage import ClickHousePredictionStore, DatasetRecord, load_clickhouse_settings_from_env
+from bbc_news.storage import ClickHousePredictionStore, DatasetRecord, load_clickhouse_settings
 
 
 def _frame_to_records(frame, id_column: str, text_column: str, target_column: str | None) -> list[DatasetRecord]:
@@ -23,10 +23,7 @@ def _frame_to_records(frame, id_column: str, text_column: str, target_column: st
 
 
 def load_data_to_clickhouse(config_path: Path) -> tuple[int, int]:
-    settings = load_clickhouse_settings_from_env()
-    if settings is None:
-        raise ValueError("ClickHouse integration is disabled. Set CLICKHOUSE_ENABLED=true.")
-
+    settings = load_clickhouse_settings()
     store = ClickHousePredictionStore(settings)
     store.ensure_ready()
 

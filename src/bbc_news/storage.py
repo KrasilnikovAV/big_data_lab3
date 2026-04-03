@@ -1,15 +1,23 @@
 from __future__ import annotations
 
-import os
 import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Protocol
 
 import clickhouse_connect
 
+from .secrets import load_secret_value
+
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+DEFAULT_CLICKHOUSE_HOST = "clickhouse"
+FALLBACK_CLICKHOUSE_HOST = "localhost"
+DEFAULT_CLICKHOUSE_PORT = 8123
+DEFAULT_CLICKHOUSE_DATABASE = "bbc_news"
+DEFAULT_CLICKHOUSE_PREDICTIONS_TABLE = "prediction_logs"
+DEFAULT_CLICKHOUSE_DATASET_TABLE = "dataset_rows"
 
 
 @dataclass(frozen=True)
@@ -64,16 +72,14 @@ class PredictionStore(Protocol):
         ...
 
 
-def _parse_bool(value: str | None, default: bool = False) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _require_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
+def _require_secret(
+    name: str,
+    vault_file: str | Path | None = None,
+    password_file: str | Path | None = None,
+) -> str:
+    value = load_secret_value(name, default="", vault_file=vault_file, password_file=password_file) or ""
     if not value:
-        raise ValueError(f"Environment variable '{name}' must be set.")
+        raise ValueError(f"Secret '{name}' must be present in Ansible Vault.")
     return value
 
 
@@ -85,50 +91,52 @@ def _validate_identifier(value: str, field_name: str) -> str:
     return value
 
 
-def load_clickhouse_settings_from_env() -> ClickHouseSettings | None:
-    if not _parse_bool(os.getenv("CLICKHOUSE_ENABLED"), default=False):
-        return None
-
-    port_value = _require_env("CLICKHOUSE_PORT")
-    try:
-        port = int(port_value)
-    except ValueError as exc:
-        raise ValueError("Environment variable 'CLICKHOUSE_PORT' must be an integer.") from exc
-
+def load_clickhouse_settings(
+    vault_file: str | Path | None = None,
+    password_file: str | Path | None = None,
+) -> ClickHouseSettings:
     return ClickHouseSettings(
-        host=_require_env("CLICKHOUSE_HOST"),
-        port=port,
-        username=_require_env("CLICKHOUSE_USER"),
-        password=_require_env("CLICKHOUSE_PASSWORD"),
-        database=_validate_identifier(_require_env("CLICKHOUSE_DATABASE"), "database"),
-        predictions_table=_validate_identifier(
-            os.getenv("CLICKHOUSE_PREDICTIONS_TABLE", "prediction_logs").strip(),
-            "predictions_table",
+        host=DEFAULT_CLICKHOUSE_HOST,
+        port=DEFAULT_CLICKHOUSE_PORT,
+        username=_require_secret("CLICKHOUSE_USER", vault_file=vault_file, password_file=password_file),
+        password=_require_secret(
+            "CLICKHOUSE_PASSWORD",
+            vault_file=vault_file,
+            password_file=password_file,
         ),
-        dataset_table=_validate_identifier(
-            os.getenv("CLICKHOUSE_DATASET_TABLE", "dataset_rows").strip(),
-            "dataset_table",
-        ),
-        secure=_parse_bool(os.getenv("CLICKHOUSE_SECURE"), default=False),
+        database=_validate_identifier(DEFAULT_CLICKHOUSE_DATABASE, "database"),
+        predictions_table=DEFAULT_CLICKHOUSE_PREDICTIONS_TABLE,
+        dataset_table=DEFAULT_CLICKHOUSE_DATASET_TABLE,
+        secure=False,
     )
 
 
-def build_prediction_store_from_env() -> PredictionStore:
-    settings = load_clickhouse_settings_from_env()
-    if settings is None:
+def build_prediction_store() -> PredictionStore:
+    try:
+        settings = load_clickhouse_settings()
+        return ClickHousePredictionStore(settings)
+    except Exception:
         return NullPredictionStore()
-    return ClickHousePredictionStore(settings)
 
 
 def create_clickhouse_client(settings: ClickHouseSettings):
-    return clickhouse_connect.get_client(
-        host=settings.host,
-        port=settings.port,
-        username=settings.username,
-        password=settings.password,
-        database=settings.database,
-        secure=settings.secure,
-    )
+    last_error: Exception | None = None
+    for host in dict.fromkeys((settings.host, FALLBACK_CLICKHOUSE_HOST)):
+        for database in dict.fromkeys((settings.database, "default")):
+            try:
+                return clickhouse_connect.get_client(
+                    host=host,
+                    port=settings.port,
+                    username=settings.username,
+                    password=settings.password,
+                    database=database,
+                    secure=settings.secure,
+                )
+            except Exception as exc:
+                last_error = exc
+
+    assert last_error is not None
+    raise last_error
 
 
 class NullPredictionStore:
