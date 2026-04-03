@@ -5,7 +5,6 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
-ENV MODEL_PATH=/app/artifacts/model.joblib
 
 COPY requirements.txt .
 RUN apt-get update && \
@@ -16,6 +15,7 @@ RUN apt-get update && \
 
 COPY config.ini .
 COPY scenario.json .
+COPY secrets ./secrets
 COPY src ./src
 COPY data ./data
 COPY scripts ./scripts

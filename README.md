@@ -20,7 +20,7 @@
 - `.github/workflows/cd.yml` - CD/functional tests.
 - `scenario.json` - сценарий функционального теста контейнера.
 - `dev_sec_ops.yml` - манифест DevSecOps.
-- `.env.example` - шаблон переменных окружения для ClickHouse.
+- `secrets/clickhouse.vault.yml` - зашифрованные ClickHouse-секреты в формате Ansible Vault.
 
 ## Быстрый старт
 
@@ -28,6 +28,36 @@
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -r requirements.txt
+```
+
+### Секреты (Ansible Vault)
+
+Локальный `.env` и пользовательские `CLICKHOUSE_*`/`ANSIBLE_VAULT_*` переменные больше не используются.
+
+1. Локальный пароль для Vault:
+
+```bash
+vi secrets/.vault_pass.txt
+chmod 600 secrets/.vault_pass.txt
+```
+
+2. Подготовка временного файла с ClickHouse-секретами:
+
+```bash
+cat > secrets/clickhouse.secrets.yml <<'EOF'
+CLICKHOUSE_USER: <clickhouse_user>
+CLICKHOUSE_PASSWORD: <clickhouse_password>
+EOF
+```
+
+3. Зашифровка `Ansible Vault` и удаление открытого файла:
+
+```bash
+./.venv/bin/ansible-vault encrypt secrets/clickhouse.secrets.yml \
+  --output secrets/clickhouse.vault.yml \
+  --vault-password-file secrets/.vault_pass.txt
+
+rm secrets/clickhouse.secrets.yml
 ```
 
 ### Обучение модели
@@ -43,8 +73,14 @@ python scripts/train_model.py --config config.ini
 
 ### Запуск API
 
+Сервис использует только стандартные пути:
+- `secrets/clickhouse.vault.yml`
+- `secrets/.vault_pass.txt`
+
+Поэтому локальный запуск выглядит так:
+
 ```bash
-PYTHONPATH=src uvicorn bbc_news.api:app --host 0.0.0.0 --port 8000
+./.venv/bin/python -m uvicorn bbc_news.api:app --app-dir src --host 0.0.0.0 --port 8000
 ```
 
 Пример запроса:
@@ -82,17 +118,18 @@ python scripts/run_scenario.py --scenario scenario.json --base-url http://localh
 docker compose down
 ```
 
-В `docker-compose` поднимаются два сервиса:
+В `docker-compose` поднимаются три сервиса:
+- `vault-bootstrap` - одноразовый контейнер, который расшифровывает Ansible Vault в runtime env-файл для ClickHouse.
 - `clickhouse` - база данных для хранения результатов модели и наборов train/test.
-- `bbc-news-api` - API сервиса модели.
+- `bbc-news-api` - API сервиса модели, читающий ClickHouse-секреты напрямую из Vault по фиксированным путям.
 
 ## CI/CD
 
 - CI запускается на `pull_request` в `main`.
 - CI выполняет: обучение, тесты, сборку образа и push в DockerHub (если заданы secrets), подпись образа `cosign`, генерацию `dev_sec_ops.yml`.
-- CD запускается вручную/по расписанию/после CI, поднимает `clickhouse` и `bbc-news-api`, загружает train/test данные в БД и выполняет функциональный сценарий из `scenario.json`.
+- CD запускается вручную/по расписанию/после CI, создаёт временный `secrets/.vault_pass.txt` из GitHub Secret `ANSIBLE_VAULT_PASSWORD`, поднимает `docker compose`, загружает train/test данные в БД и выполняет функциональный сценарий из `scenario.json`.
 
 ## Ссылки
 
-- GitHub: https://github.com/KrasilnikovAV/big_data_lab2
-- DockerHub: https://hub.docker.com/r/kabeton2/bbc-news-classifier_v2
+- GitHub: https://github.com/KrasilnikovAV/big_data_lab3
+- DockerHub: https://hub.docker.com/r/kabeton2/bbc-news-classifier_v3

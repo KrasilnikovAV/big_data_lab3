@@ -25,13 +25,12 @@ jobs:
         if: github.event_name != 'workflow_run'
         uses: actions/checkout@v4
 
-      - name: Prepare runtime environment
+      - name: Prepare vault password file
         run: |
-          echo "CLICKHOUSE_HOST=clickhouse" >> "$GITHUB_ENV"
-          echo "CLICKHOUSE_PORT=8123" >> "$GITHUB_ENV"
-          echo "CLICKHOUSE_DATABASE=bbc_news" >> "$GITHUB_ENV"
-          echo "CLICKHOUSE_USER=ci_user_${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
-          echo "CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+          test -n "${{ secrets.ANSIBLE_VAULT_PASSWORD }}"
+          mkdir -p secrets
+          printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > secrets/.vault_pass.txt
+          chmod 600 secrets/.vault_pass.txt
 
       - name: Start container
         run: docker compose up -d --build
@@ -64,3 +63,7 @@ jobs:
       - name: Stop container
         if: always()
         run: docker compose down
+
+      - name: Remove vault password file
+        if: always()
+        run: rm -f secrets/.vault_pass.txt

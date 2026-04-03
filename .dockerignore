@@ -7,4 +7,5 @@ __pycache__
 notebooks
 tests
 artifacts
+secrets/.vault_pass.txt
 *.ipynb

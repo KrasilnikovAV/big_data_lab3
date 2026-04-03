@@ -11,3 +11,5 @@ dvc==3.59.1
 pathspec==0.12.1
 PyYAML==6.0.2
 clickhouse-connect==0.15.1
+ansible-core==2.18.5
+Pygments==2.20.0

@@ -1,42 +1,86 @@
 services:
+  vault-bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local/bbc-news-classifier_v3:latest
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        secrets="$$(ansible-vault view /app/secrets/clickhouse.vault.yml \
+          --vault-password-file /run/secrets/ansible_vault_password)"
+        user="$$(printf '%s\n' "$$secrets" | awk -F': ' '/^CLICKHOUSE_USER: / {print $$2}')"
+        password="$$(printf '%s\n' "$$secrets" | awk -F': ' '/^CLICKHOUSE_PASSWORD: / {print $$2}')"
+        case "$$user" in
+          ''|*[!A-Za-z0-9_]*)
+            echo "Unsupported CLICKHOUSE_USER value" >&2
+            exit 1
+            ;;
+        esac
+        escaped_password="$$(printf '%s' "$$password" \
+          | sed -e 's/&/\\&amp;/g' \
+                -e 's/</\\&lt;/g' \
+                -e 's/>/\\&gt;/g' \
+                -e 's/\"/\\&quot;/g' \
+                -e "s/'/\\&apos;/g")"
+        cat > /vault/clickhouse-user.xml <<EOF
+        <clickhouse>
+          <users>
+            <$$user>
+              <password>$$escaped_password</password>
+              <profile>default</profile>
+              <quota>default</quota>
+              <networks>
+                <ip>::/0</ip>
+              </networks>
+              <grants>
+                <query>GRANT ALL ON *.*</query>
+              </grants>
+            </$$user>
+          </users>
+        </clickhouse>
+        EOF
+        test -s /vault/clickhouse-user.xml
+    volumes:
+      - vault_runtime:/vault
+      - ./secrets/.vault_pass.txt:/run/secrets/ansible_vault_password:ro
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     restart: unless-stopped
-    environment:
-      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE}
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    depends_on:
+      vault-bootstrap:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "clickhouse-client --user $$CLICKHOUSE_USER --password $$CLICKHOUSE_PASSWORD --query 'SELECT 1'"]
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
       interval: 10s
       timeout: 5s
       retries: 12
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - vault_runtime:/etc/clickhouse-server/users.d
 
   bbc-news-api:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${DOCKERHUB_USERNAME:-local}/bbc-news-classifier_v2:${IMAGE_TAG:-latest}
+    image: local/bbc-news-classifier_v3:latest
     depends_on:
+      vault-bootstrap:
+        condition: service_completed_successfully
       clickhouse:
         condition: service_healthy
     ports:
       - "8000:8000"
-    environment:
-      MODEL_PATH: /app/artifacts/model.joblib
-      CLICKHOUSE_ENABLED: "true"
-      CLICKHOUSE_HOST: ${CLICKHOUSE_HOST}
-      CLICKHOUSE_PORT: ${CLICKHOUSE_PORT}
-      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE}
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health | grep -q '\"status\":\"ok\"' && curl -fsS http://localhost:8000/health | grep -q '\"database\":\"ok\"'"] # shell
       interval: 30s
       timeout: 10s
       retries: 5
+    volumes:
+      - ./secrets/.vault_pass.txt:/run/secrets/ansible_vault_password:ro
 
 volumes:
   clickhouse_data:
+  vault_runtime:
