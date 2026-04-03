@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from .predict import DEFAULT_PREDICTION_SERVICE, PredictionModel, load_model
 from .storage import (
     NullPredictionStore,
+    PredictionClassStat,
     PredictionLogRecord,
     PredictionStore,
     build_prediction_store_from_env,
@@ -68,6 +69,16 @@ class PredictionHistoryResponse(BaseModel):
     records: list[PredictionLogResponse]
 
 
+class PredictionClassStatResponse(BaseModel):
+    predicted_label: str
+    count: int
+    share: float
+
+
+class PredictionStatsResponse(BaseModel):
+    classes: list[PredictionClassStatResponse]
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     payload = DEFAULT_PREDICTION_SERVICE.health_status(MODEL)
@@ -109,6 +120,14 @@ def get_recent_predictions(limit: int = 10) -> PredictionHistoryResponse:
     )
 
 
+@app.get("/predictions/stats", response_model=PredictionStatsResponse)
+def get_prediction_stats() -> PredictionStatsResponse:
+    class_stats = PREDICTION_STORE.fetch_prediction_class_stats()
+    return PredictionStatsResponse(
+        classes=[PredictionClassStatResponse(**_serialize_class_stat(stat)) for stat in class_stats]
+    )
+
+
 def _serialize_record(record: PredictionLogRecord) -> dict[str, str | int]:
     return {
         "request_id": record.request_id,
@@ -116,4 +135,12 @@ def _serialize_record(record: PredictionLogRecord) -> dict[str, str | int]:
         "input_text": record.input_text,
         "predicted_label": record.predicted_label,
         "created_at": record.created_at,
+    }
+
+
+def _serialize_class_stat(stat: PredictionClassStat) -> dict[str, str | int | float]:
+    return {
+        "predicted_label": stat.predicted_label,
+        "count": stat.count,
+        "share": stat.share,
     }

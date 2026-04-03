@@ -94,5 +94,5 @@ docker compose down
 
 ## Ссылки
 
-- GitHub: https://github.com/KrasilnikovAV/big_data_lab2
+- GitHub: https://github.com/KrasilnikovAV/big_data_lab3
 - DockerHub: https://hub.docker.com/r/kabeton2/bbc-news-classifier_v2

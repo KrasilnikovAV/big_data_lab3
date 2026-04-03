@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from bbc_news import api
-from bbc_news.storage import PredictionLogRecord
+from bbc_news.storage import PredictionClassStat, PredictionLogRecord
 
 
 class DummyModel:
@@ -22,6 +22,7 @@ class DummyStore:
     def __init__(self) -> None:
         self.saved_batches: list[tuple[list[str], list[str]]] = []
         self.records: list[PredictionLogRecord] = []
+        self.class_stats: list[PredictionClassStat] = []
         self.health = "disabled"
 
     def ensure_ready(self) -> None:
@@ -35,6 +36,9 @@ class DummyStore:
 
     def fetch_recent_predictions(self, limit: int = 10) -> list[PredictionLogRecord]:
         return self.records[:limit]
+
+    def fetch_prediction_class_stats(self) -> list[PredictionClassStat]:
+        return self.class_stats
 
 
 def test_predict_endpoint_returns_predictions() -> None:
@@ -130,5 +134,26 @@ def test_predictions_endpoint_returns_recent_rows() -> None:
                 "predicted_label": "business",
                 "created_at": "2026-04-02T09:00:00+00:00",
             }
+        ]
+    }
+
+
+def test_prediction_stats_endpoint_returns_class_distribution() -> None:
+    store = DummyStore()
+    store.class_stats = [
+        PredictionClassStat(predicted_label="sport", count=3, share=0.75),
+        PredictionClassStat(predicted_label="business", count=1, share=0.25),
+    ]
+
+    with TestClient(api.app) as client:
+        api.MODEL = DummyModel()
+        api.PREDICTION_STORE = store
+        response = client.get("/predictions/stats")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "classes": [
+            {"predicted_label": "sport", "count": 3, "share": 0.75},
+            {"predicted_label": "business", "count": 1, "share": 0.25},
         ]
     }

@@ -34,6 +34,13 @@ class PredictionLogRecord:
 
 
 @dataclass(frozen=True)
+class PredictionClassStat:
+    predicted_label: str
+    count: int
+    share: float
+
+
+@dataclass(frozen=True)
 class DatasetRecord:
     article_id: str
     text: str
@@ -51,6 +58,9 @@ class PredictionStore(Protocol):
         ...
 
     def fetch_recent_predictions(self, limit: int = 10) -> list[PredictionLogRecord]:
+        ...
+
+    def fetch_prediction_class_stats(self) -> list[PredictionClassStat]:
         ...
 
 
@@ -132,6 +142,9 @@ class NullPredictionStore:
         return None
 
     def fetch_recent_predictions(self, limit: int = 10) -> list[PredictionLogRecord]:
+        return []
+
+    def fetch_prediction_class_stats(self) -> list[PredictionClassStat]:
         return []
 
 
@@ -219,6 +232,27 @@ class ClickHousePredictionStore:
                 input_text=str(row[2]),
                 predicted_label=str(row[3]),
                 created_at=_format_timestamp(row[4]),
+            )
+            for row in rows
+        ]
+
+    def fetch_prediction_class_stats(self) -> list[PredictionClassStat]:
+        query = f"""
+            SELECT predicted_label, count() AS prediction_count
+            FROM {self._predictions_table_ref}
+            GROUP BY predicted_label
+            ORDER BY prediction_count DESC, predicted_label ASC
+        """
+        rows = self.client.query(query).result_set
+        total_predictions = sum(int(row[1]) for row in rows)
+        if total_predictions == 0:
+            return []
+
+        return [
+            PredictionClassStat(
+                predicted_label=str(row[0]),
+                count=int(row[1]),
+                share=round(int(row[1]) / total_predictions, 4),
             )
             for row in rows
         ]
