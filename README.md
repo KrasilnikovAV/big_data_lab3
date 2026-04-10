@@ -119,7 +119,7 @@ docker compose down
 ```
 
 В `docker-compose` поднимаются три сервиса:
-- `vault-bootstrap` - одноразовый контейнер, который расшифровывает Ansible Vault и генерирует `clickhouse-user.xml` для ClickHouse.
+- `vault-bootstrap` - одноразовый контейнер, который запускает `scripts/bootstrap_clickhouse.py`, расшифровывает Ansible Vault и генерирует `clickhouse-user.xml` для ClickHouse.
 - `clickhouse` - база данных для хранения результатов модели и наборов train/test.
 - `bbc-news-api` - API сервиса модели, читающий ClickHouse-секреты напрямую из Vault по фиксированным путям.
 
